@@ -106,57 +106,7 @@ def bellman_ford_edgelist(graph_edges, V, E, src):
 
 
 
-import math
-
-def dijkstra_simplified_bands(adj_list, V, src, delta=2):
-    """
-    Versão Corrigida: Remove o return prematuro.
-    """
-    dist = [float('inf')] * V
-    dist[src] = 0
-    
-    buckets = {} 
-    buckets[0] = {src}
-    
-    current_bucket_idx = 0
-    max_dist_seen = 0
-    
-    while True:
-        # 1. Encontrar o próximo balde não vazio
-        while current_bucket_idx not in buckets or not buckets[current_bucket_idx]:
-            current_bucket_idx += 1
-            
-            # Condição de Parada: Se passamos da maior distância vista e não tem mais nada
-            if current_bucket_idx * delta > max_dist_seen:
-                is_empty = True
-                for k in buckets:
-                    if k >= current_bucket_idx and buckets[k]:
-                        is_empty = False; break
-                if is_empty: 
-                    return dist # <--- O ÚNICO RETURN DEVE SER AQUI (ou na checagem de segurança)
-            
-            # Break de segurança para loops infinitos em grafos desconexos/estranhos
-            if current_bucket_idx > V * 100 + max_dist_seen: 
-                 return dist 
-        
-        # 2. Processar a "Faixa" (Bucket) atual
-        # Enquanto houver vértices neste balde, processa
-        while buckets.get(current_bucket_idx):
-            u = buckets[current_bucket_idx].pop() 
-            
-            for v, weight in adj_list[u]:
-                new_dist = dist[u] + weight
-                
-                if new_dist < dist[v]:
-                    dist[v] = new_dist
-                    max_dist_seen = max(max_dist_seen, new_dist)
-                    
-                    new_bucket_idx = int(new_dist // delta)
-                    
-                    if new_bucket_idx not in buckets:
-                        buckets[new_bucket_idx] = set()
-                    
-                    buckets[new_bucket_idx].add(v)
+from dijkstra_artigo_corrigido import sssp_break_sorting_barrier as dijA
         
 
 
@@ -197,7 +147,21 @@ def rodar_benchmark_completo():
         (100, 0.5), 
         (100, 0.8), 
         (200, 0.2),
-        (300, 0.1) # Cuidado com BF em grafos grandes!
+        (300, 0.1), # Cuidado com BF em grafos grandes!
+        # --- Zona de Confirmação (V um pouco maior) ---
+        (400, 0.05),  # V=400. Esparso. Dijkstra começa a sentir o peso de V^2.
+        (500, 0.02),  # V=500. Muito esparso (Avg degree ~10). 
+                    # Dijkstra processa 250.000 células. Artigo processa ~5.000 arestas.
+        
+        # --- Zona de Domínio do Artigo (V Grande) ---
+        (1000, 0.01), # V=1000. Densidade 1%.
+                    # Dijkstra: 1.000.000 operações na matriz.
+                    # Artigo: ~10.000 arestas. Diferença deve ser brutal aqui.
+
+        # --- O "Grand Finale" (Se sua máquina aguentar) ---
+        (2000, 0.005) # V=2000. Densidade 0.5%.
+                    # Dijkstra: 4.000.000 operações. Vai demorar bastante (>400ms provável).
+                    # Artigo: ~20.000 arestas. Deve se manter rápido (<20ms).
     ]
     
     resultados_brutos = []
@@ -228,7 +192,7 @@ def rodar_benchmark_completo():
             # --- Teste 3: Dijkstra Artigo (Faixas) ---
             # Definimos delta como uma média simples dos pesos (ex: 2 ou 5)
             start = time.perf_counter()
-            dijkstra_simplified_bands(adj_list, V, src, delta=3)
+            dijA(adj_list, 0)
             t_artigo = (time.perf_counter() - start) * 1000
             
             resultados_brutos.append({
@@ -236,7 +200,7 @@ def rodar_benchmark_completo():
                 "Densidade": densidade,
                 "Arestas": E,
                 "Dijkstra Clássico (ms)": t_classico,
-                "Artigo/Faixas (ms)": t_artigo,
+                "Artigo (ms)": t_artigo,
                 "Bellman-Ford (ms)": t_bf,
             })
 
@@ -245,7 +209,7 @@ def rodar_benchmark_completo():
     df_final = df.groupby(["Vértices", "Densidade"]).mean(numeric_only=True).reset_index()
     
     # Remover colunas desnecessárias para visualização limpa
-    cols = ["Vértices", "Densidade", "Arestas", "Dijkstra Clássico (ms)", "Artigo/Faixas (ms)", "Bellman-Ford (ms)" ]
+    cols = ["Vértices", "Densidade", "Arestas", "Dijkstra Clássico (ms)", "Artigo (ms)", "Bellman-Ford (ms)" ]
     print("\n" + "="*80)
     print("RESULTADOS FINAIS - MÉDIA DE TEMPO")
     print("="*80)
